@@ -143,7 +143,6 @@ class Player(pygame.sprite.Sprite):
             move = (-ZOMBIE_SPEED,0)
         elif direction == 3:
             move = (ZOMBIE_SPEED,0)
-        
         # Find New position
         newpos = self.rect.move(move)
 
@@ -305,6 +304,7 @@ def main():
     direction = None
     # allsprites.draw(screen)
     walking = False
+
     while game_running:
         clock.tick(60)
         for event in pygame.event.get():
