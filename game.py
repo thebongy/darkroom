@@ -2,6 +2,7 @@ import pygame
 from pygame.locals import *
 import sys
 import json
+import random
 
 SPEED = 2 # No of pixels the player walks per frame
 FRAME_COUNT = 0
@@ -33,7 +34,6 @@ def get_tile(tile_id, width):
     0  1  2  3  4
     5  6  7  8  9
     ... and so on
-
     The math used below should be self-explanatory. If not, ignore and assume it works xD.
     '''
     y = tile_id / width
@@ -181,23 +181,23 @@ class Zombie(pygame.sprite.Sprite):
         transformations to obtain images for each direction.
         '''
         
-        # Images for hero facing right
-        for i in range(1,7):
-            # p = load_image('res/tilesets/player/player'+str(i)+'.png')
-            self.p_tiles[3].append(load_image('res/tilesets/player/player'+str(i)+'.png')) # The default images face to the right
+        # Images for zombie facing right
+        for i in range(1,5):
+            # p = load_image('res/tilesets/zombie/zombie'+str(i)+'.png')
+            self.p_tiles[3].append(load_image('res/tilesets/zombie/zombie'+str(i)+'.png')) # The default images face to the right
         
-        #Images for hero facing left
-        for i in range(6):
+        #Images for zombie facing left
+        for i in range(4):
             k = pygame.transform.flip(self.p_tiles[3][i][0],1,0)
             self.p_tiles[2].append((k, k.get_rect())) # Flip the right images
         
-        #Images for hero facing up
-        for i in range(6):
+        #Images for zombie facing up
+        for i in range(4):
             l = pygame.transform.rotate(self.p_tiles[3][i][0],90)
             self.p_tiles[0].append((l, l.get_rect())) # Rotate the right images 90 degrees counter-clockwise
         
-        #Images for hero facing down
-        for i in range(6):
+        #Images for zombie facing down
+        for i in range(4):
             m = pygame.transform.flip(self.p_tiles[0][i][0],0,1)
             self.p_tiles[1].append((m, m.get_rect())) # Flip the up images
         
@@ -314,15 +314,19 @@ def main():
                 FRAME_COUNT = 0
                 if event.key == pygame.K_w:
                     direction = 0
+                    walking = True
                 elif event.key == pygame.K_s:
                     direction = 1
+                    walking = True
                 elif event.key == pygame.K_a:
                     direction = 2
+                    walking = True
                 elif event.key == pygame.K_d:
                     direction = 3
+                    walking = True
                 elif event.key == pygame.K_q:
                     game_running = False
-                walking = True
+                
             elif event.type == KEYUP:
                 walking = False
         if walking:
@@ -338,3 +342,4 @@ def main():
         pygame.display.flip()
 
 main()
+
