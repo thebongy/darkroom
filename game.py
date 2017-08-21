@@ -3,15 +3,23 @@ from pygame.locals import *
 import sys
 import json
 
-SPEED = 10 # No of pixels the player walks per frame
+SPEED = 2 # No of pixels the player walks per frame
+FRAME_COUNT = 0
 
-def load_image(fullname, colorkey=None):
+ZOMBIE_SPEED = 1
+
+D_CHANGE = 0.2
+STAT_CHANCE = 0.3
+def load_image(fullname, alpha=True, colorkey=None):
     try:
         image = pygame.image.load(fullname)
-    except pygame.error:
-        print ('Cannot load image:', fullname)
-        raise SystemExit(str(geterror()))
-    image = image.convert()
+    except pygame.error, message:
+        print 'Cannot load image:'
+        raise SystemExit, message
+    if alpha:
+        image = image.convert_alpha()
+    else: 
+        image = image.convert()
     if colorkey is not None:
         if colorkey is -1:
             colorkey = image.get_at((0,0))
@@ -65,8 +73,27 @@ def load_level(fl):
                     objects[layer['name']].append(tile_rect)
     return level, objects                
 
+def generate_direction(zombie, objects):
+    new_positions = []
+    new_positions.append(zombie.rect.move((0,SPEED)))
+    new_positions.append(zombies.rect.move((0, -SPEED)))
+    new_positions.append(zombies.rect.move((SPEED,0)))
+    new_positions.append(zombies.rect.move((-SPEED, 0)))
+
+    direction = 0
+    for pos in range(len(new_positions)):
+        for wall in objects['Wall']:
+            if new_positions[pos].collide_rect(wall):
+                break
+        else:
+            direction = pos
+            new_pos = new_positions[pos]
+            break
+    return (pos, new_positions)
+    
+    
 class Player(pygame.sprite.Sprite):
-    def __init__(self,level,start_pos):
+    def __init__(self, level, start_pos):
         pygame.sprite.Sprite.__init__(self)
         self.p_tiles = [[],[],[],[]] # UP, DOWN, LEFT, RIGHT!
         # PHOTOSHOP SKILLS -
@@ -78,39 +105,45 @@ class Player(pygame.sprite.Sprite):
         
         # Images for hero facing right
         for i in range(1,7):
-            self.p_tiles[3].append(load_image('res/tilesets/player'+str(i)+'.png')) # The default images face to the right
+            # p = load_image('res/tilesets/player/player'+str(i)+'.png')
+            self.p_tiles[3].append(load_image('res/tilesets/player/player'+str(i)+'.png')) # The default images face to the right
         
         #Images for hero facing left
         for i in range(6):
-            self.p_tiles[2].append(pygame.transform.flip(self.p_tiles[3][i],1,0)) # Flip the right images
+            k = pygame.transform.flip(self.p_tiles[3][i][0],1,0)
+            self.p_tiles[2].append((k, k.get_rect())) # Flip the right images
         
         #Images for hero facing up
         for i in range(6):
-            self.p_tiles[0].append(pygame.transform.rotate(self.p_tiles[3][i],90)) # Rotate the right images 90 degrees counter-clockwise
+            l = pygame.transform.rotate(self.p_tiles[3][i][0],90)
+            self.p_tiles[0].append((l, l.get_rect())) # Rotate the right images 90 degrees counter-clockwise
         
         #Images for hero facing down
         for i in range(6):
-            self.p_tiles[1].append(pygame.transform.flip(self.p_tiles[0][i],0,1)) # Flip the up images
+            m = pygame.transform.flip(self.p_tiles[0][i][0],0,1)
+            self.p_tiles[1].append((m, m.get_rect())) # Flip the up images
         
-        self.images,self.rect = self.p_tiles[0][0] # Set default as hero facing straight
+        self.image,self.rect = self.p_tiles[0][0] # Set default as hero facing straight
         self.rect.topleft = start_pos # Starting position of hero on map. (The coordinates of the beginning door)
         # 0-UP 1-DOWN 2-LEFT 3-RIGHT
         self.move_state = 0
         self.direction = 0
         self.objects = level[1] # Ground and Wall Rects in a dict of lists
 
-    def walk(self,direction):
+    def walk(self,direction = None):
         # 0-UP 1-DOWN 2-LEFT 3-RIGHT
         # Based on direction, find out the offset  coordinates to move by
+        if direction == None:
+            direction = self.direction
         if direction == 0:
-            move = (0,SPEED)
+            move = (0,-ZOMBIE_SPEED)
         elif direction == 1:
-            move = (0,-SPEED)
+            move = (0,ZOMBIE_SPEED)
         elif direction == 2:
-            move = (-SPEED,0)
+            move = (-ZOMBIE_SPEED,0)
         elif direction == 3:
-            move = (SPEED,0)
-
+            move = (ZOMBIE_SPEED,0)
+        
         # Find New position
         newpos = self.rect.move(move)
 
@@ -121,39 +154,187 @@ class Player(pygame.sprite.Sprite):
         
         # If the direction is same as the previous direction, move to the neext animation photo
         if direction == self.direction:
-            self.move_state += 1
+            if self.move_state < 5:
+                if FRAME_COUNT % 16 == 0:
+                    self.move_state += 1
+            else:
+                self.move_state = 0
         else:
             self.move_state = 0 # If direction changes start from 0th move state
+            self.direction = direction
         self.rect = newpos
-        self.image = self.p_tiles[direction][move_state]
-    
+        self.image = self.p_tiles[direction][self.move_state][0]
+
     def stationary(self):
         # Stand straight, but face in the previous moved direction only.
         self.move_state = 0
-        self.image = self.p_tiles[direction][move_state]
+        self.image = self.p_tiles[self.direction][0][0]        
 
+class Zombie(pygame.sprite.Sprite):
+    def __init__(self, level, start_pos, player):
+        self.hero = player
+        pygame.sprite.Sprite.__init__(self)
+        self.p_tiles = [[],[],[],[]] # UP, DOWN, LEFT, RIGHT!
+        # PHOTOSHOP SKILLS -
+        '''
+        The hero sprites is an animation with 6 images. By default all of these are facing right. But we
+        require images for up, left, bottom facing positions also. The below code does the required
+        transformations to obtain images for each direction.
+        '''
+        
+        # Images for hero facing right
+        for i in range(1,7):
+            # p = load_image('res/tilesets/player/player'+str(i)+'.png')
+            self.p_tiles[3].append(load_image('res/tilesets/player/player'+str(i)+'.png')) # The default images face to the right
+        
+        #Images for hero facing left
+        for i in range(6):
+            k = pygame.transform.flip(self.p_tiles[3][i][0],1,0)
+            self.p_tiles[2].append((k, k.get_rect())) # Flip the right images
+        
+        #Images for hero facing up
+        for i in range(6):
+            l = pygame.transform.rotate(self.p_tiles[3][i][0],90)
+            self.p_tiles[0].append((l, l.get_rect())) # Rotate the right images 90 degrees counter-clockwise
+        
+        #Images for hero facing down
+        for i in range(6):
+            m = pygame.transform.flip(self.p_tiles[0][i][0],0,1)
+            self.p_tiles[1].append((m, m.get_rect())) # Flip the up images
+        
+        self.image,self.rect = self.p_tiles[0][0] # Set default as hero facing straight
+        self.rect.topleft = start_pos # Starting position of hero on map. (The coordinates of the beginning door)
+        # 0-UP 1-DOWN 2-LEFT 3-RIGHT
+        self.move_state = 0
+        self.direction = random.randint(0,3)
+        self.objects = level[1] # Ground and Wall Rects in a dict of lists
+        self.state = 'ROAM'
+        self.find = self.rect.inflate(96, 96)
+
+    def check_surrounds(self):
+        if self.find.colliderect(self.hero.rect):
+            self.state = 'KILL'
+            self.kill()
+        elif self.find.inflate(160, 160).colliderect(self.hero.rect):
+            self.state = 'ROAM'
+
+    def kill(self):
+        dy = self.hero.centery - self.rect.centery
+        dx = self.hero.centerx - self.rect.centerx
+        if abs(dy) > abs(dx):
+            if dy > 0 :
+                move = (0, SPEED)
+            else:
+                move = (0, -SPEED)
+        else:
+            if dx > 0:
+                move = (SPEED, 0)
+            else:
+                move = (-SPEED, 0)
+        newpos = self.rect.move(move)
+        for wall in self.objects['Wall']:
+            if newpos.colliderect(wall):
+                return False
+        self.rect = newpos
+
+    def roam(self):
+        if not random.randint(0,STAT_CHANCE*10):
+            return False # Player is stationary
+        if not random.randint(0, DIR_CHANGE):
+            self.rect,self.direction = generate_direction()
+            return True
+
+        if self.direction == 0:
+            move = (0,-ZOMBIE_SPEED)
+        elif self.direction == 1:
+            move = (0, ZOMBIE_SPEED)
+        elif self.direction == 2:
+            move= (-ZOMBIE_SPEED,0)
+        elif self.direciont == 3:
+            move = (ZOMBIE_SPEED, 0)
+        newpos = self.rect.move(move)
+
+        for wall in self.objects['Wall']:
+            if newpos.colliderect(wall):
+                newpos,self.direction = generate_direction()
+                break
+
+        self.rect = newpos
+
+    def stationary(self):
+        # Stand straight, but face in the previous moved direction only.
+        self.move_state = 0
+        self.image = self.p_tiles[self.direction][0][0]        
+
+class Bullet(pygame.sprite.Sprite):
+    def __init__(self, start_pos, direction, objects, zombies):
+        self.image,self.rect = load_image('res/tilesets/bullet/bullet.png')
+        self.direction = direction
+        if self.direction == 0:
+            self.move = (0, -SPEED)
+        elif self.direction == 1:
+            self.move = (0, SPEED)
+        elif self.direction == 2:
+            self.move = (-SPEED,0)
+        elif self.direction == 3:
+            self.move = (SPEED, 0)
+        self.objects = objects
+        self.zombies = zombies
+    def move(self):
+        newpos = self.rect.move(self.move)
+        for wall in self.objects['Wall']:
+            if newpos.colliderect(wall):
+                return False
+
+        #if sprite.spritecollide(self, zombies, 0)
+        
 def main():
+    global FRAME_COUNT
     pygame.init()
     screen = pygame.display.set_mode((800,600))
     pygame.display.set_caption('darkroom beta')
-    
+
     level_1 = load_level('res/map/level.json')
-    screen.blit(level_1[0], (0,0))
+    # screen.blit(level_1[0], (0,0))
 
-    pygame.display.flip()
-
+    # pygame.display.flip()
     clock = pygame.time.Clock()
-
+    player = Player(level_1, [350, 200])
+    allsprites = pygame.sprite.RenderPlain((player))
     game_running = True
-
+    direction = None
+    # allsprites.draw(screen)
+    walking = False
     while game_running:
         clock.tick(60)
         for event in pygame.event.get():
             if event.type == QUIT:
                 game_running = False
+            elif event.type == KEYDOWN:
+                FRAME_COUNT = 0
+                if event.key == pygame.K_w:
+                    direction = 0
+                elif event.key == pygame.K_s:
+                    direction = 1
+                elif event.key == pygame.K_a:
+                    direction = 2
+                elif event.key == pygame.K_d:
+                    direction = 3
+                elif event.key == pygame.K_q:
+                    game_running = False
+                walking = True
+            elif event.type == KEYUP:
+                walking = False
+        if walking:
+            FRAME_COUNT += SPEED
+            player.walk(direction)
+        else:
+            player.stationary()
+        k = level_1[0].copy()
+        allsprites.draw(k)
 
+        screen.blit(pygame.transform.scale(k,(800,600)), [0, 0])
+        # screen.blit(k, [0, 0])
+        pygame.display.flip()
 
 main()
-
-
-
